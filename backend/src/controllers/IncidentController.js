@@ -1,54 +1,58 @@
-const connection = require('../database/connection')
+const connection = require("../database/connection");
 
 module.exports = {
+  async index(request, response) {
+    const { page = 1 } = request.query;
 
-    async index (request, response){
+    const [count] = await connection("incidents").count();
 
-        const { page = 1} = request.query;
+    const incident = await connection("incidents")
+      .join("ongs", "ongs.id", "=", "incidents.ong_id")
+      .limit(5)
+      .offset((page - 1) * 5)
+      .select([
+        "incidents.*",
+        "ongs.name",
+        "ongs.email",
+        "ongs.whatsapp",
+        "ongs.city",
+        "ongs.uf"
+      ]);
 
-        const [count] = await connection('incidents').count()
+    response.header("X-Total-Count", count["count(*)"]);
 
-        const incident = await connection('incidents')
-        .join('ongs', 'ongs.id', '=', 'incidents.ong_id')
-        .limit(5)
-        .offset((page -1) * 5 ).select(['incidents.*', 
-        'ongs.name','ongs.email', 'ongs.whatsapp', 'ongs.city','ongs.uf'])
+    response.json(incident);
+  },
 
-        response.header('X-Total-Count', count['count(*)']);
-    
-        response.json(incident)
+  async create(request, response) {
+    const { title, description, value } = request.body;
 
-    },
+    const ong_id = request.headers.authorization;
 
-    async create (request, response){
+    const [id] = await connection("incidents").insert({
+      title,
+      description,
+      value,
+      ong_id
+    });
+    return response.json({ id });
+  },
 
-        const {title, description, value} = request.body;
+  async delete(request, response) {
+    const { id } = request.params;
+    const ong_id = request.headers.authorization;
 
-       const ong_id = request.headers.authorization;
-    
-       const [id] =  await connection('incidents').insert({
-            title,
-            description,
-            value,
-            ong_id
-        })
-        return response.json({ id })
-    },
+    const deleteIncident = await connection("incidents")
+      .where("id", id)
+      .select("ong_id")
+      .first();
 
-    async delete(request, response){
-        const {id} = request.params;
-        const ong_id = request.headers.authorization;
-
-        const deleteIncident = await connection('incidents')
-        .where('id', id)
-        .select('ong_id')
-        .first()
-
-        if(deleteIncident.ong_id != ong_id){
-            return response.status(401).json({ error: 'Operation not permited'});
-        }
-        await connection('incidents').where('id', id).delete()
-        return response.status(204).send()
-
+    if (deleteIncident.ong_id != ong_id) {
+      return response.status(401).json({ error: "Operation not permited" });
     }
-}
+    await connection("incidents")
+      .where("id", id)
+      .delete();
+    return response.status(204).send();
+  }
+};
